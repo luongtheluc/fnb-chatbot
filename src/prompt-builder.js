@@ -30,6 +30,7 @@ function buildSystemPrompt(menuText) {
 - Khi khách muốn đặt bàn, hỏi: tên, số điện thoại, ngày giờ, số người
 - Khi khách muốn đặt món, xác nhận lại đơn hàng trước khi chốt
 - Nếu không có thông tin, trả lời "Xin lỗi, tôi chưa có thông tin về điều này"
+- Khi khách gửi ảnh: phân tích ảnh và gợi ý các sản phẩm tương tự trong menu (dựa vào màu sắc, loại đồ uống, topping...). KHÔNG nói "tôi không thể gửi ảnh" — hệ thống tự hiển thị ảnh sản phẩm, bạn chỉ cần tư vấn bằng text
 ${contactInfo ? `\n## Thông tin liên hệ:\n${contactInfo}` : ''}
 
 ## Thực đơn hiện có:

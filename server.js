@@ -10,7 +10,7 @@ const express = require('express');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
 const { pool, testConnection } = require('./src/db');
-const { streamChat } = require('./src/gemini-client');
+const { streamChat, buildUserMessage } = require('./src/gemini-client');
 const { getMenuContext, formatMenuForPrompt } = require('./src/menu-context');
 const { buildSystemPrompt, buildGeminiHistory } = require('./src/prompt-builder');
 const { validateInput, checkRateLimit, validateAiResponse } = require('./src/security');
@@ -20,7 +20,10 @@ const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(cors({ origin: '*' })); // restrict in production
-app.use(express.json({ limit: '10kb' }));
+// 2mb limit — accommodates base64-encoded images (~150KB after 800px resize)
+app.use(express.json({ limit: process.env.REQUEST_LIMIT || '2mb' }));
+// Serve product images from local assets folder
+app.use('/assets', express.static('assets'));
 
 // Get real client IP (works behind proxy)
 function getClientIp(req) {
@@ -52,12 +55,15 @@ app.post('/chat/session', async (req, res) => {
 
 // ─── POST /chat/stream ───────────────────────────────────────────────────────
 // Main streaming endpoint: SSE text/event-stream
+// Body: { message, session_id, image_base64?, image_mime? }
 app.post('/chat/stream', async (req, res) => {
-  const { message, session_id } = req.body;
+  const { message, session_id, image_base64, image_mime = 'image/jpeg' } = req.body;
   const ip = getClientIp(req);
 
-  // 1. Validate input
-  const validation = validateInput(message);
+  // 1. Validate input — allow empty text if image is provided
+  const hasImage = typeof image_base64 === 'string' && image_base64.length > 0;
+  const effectiveMessage = message || (hasImage ? 'Đây là ảnh tôi muốn tìm món tương tự' : '');
+  const validation = validateInput(effectiveMessage);
   if (!validation.ok) {
     return res.status(400).json({ error: validation.error });
   }
@@ -80,7 +86,7 @@ app.post('/chat/stream', async (req, res) => {
     const [rows] = await pool.execute(
       `SELECT role, content FROM chat_messages
        WHERE session_id = ?
-       ORDER BY created_at DESC LIMIT 10`,
+       ORDER BY created_at DESC LIMIT 6`,
       [session_id]
     );
     history = rows.reverse(); // oldest first
@@ -93,10 +99,10 @@ app.post('/chat/stream', async (req, res) => {
   const menuText = formatMenuForPrompt(menuItems);
   const systemPrompt = buildSystemPrompt(menuText);
 
-  // 6. Build Gemini message history + new user message
+  // 6. Build Gemini message history + new user message (with optional image)
   const geminiMessages = [
     ...buildGeminiHistory(history),
-    { role: 'user', parts: [{ text: cleanMessage }] },
+    buildUserMessage(cleanMessage, hasImage ? image_base64 : null, image_mime),
   ];
 
   // 7. Save user message to DB
@@ -116,7 +122,24 @@ app.post('/chat/stream', async (req, res) => {
   res.setHeader('X-Accel-Buffering', 'no'); // disable nginx buffering
   res.flushHeaders();
 
-  // 9. Stream from Gemini
+  // 9. Send matched menu items as first SSE event (frontend renders product cards with images)
+  if (menuItems.length > 0) {
+    const baseImg = (process.env.BASE_IMAGE_URL || '').replace(/\/$/, '');
+    const menuCards = menuItems.map((item) => ({
+      id: item.id,
+      name: item.name,
+      price: Number(item.price),
+      listed_price: Number(item.listed_price),
+      category: item.category,
+      // Prefix relative paths (e.g. "assets/img/...") with BASE_IMAGE_URL
+      image: item.image
+        ? (item.image.startsWith('http') ? item.image : `${baseImg}/${item.image}`)
+        : null,
+    }));
+    res.write(`data: ${JSON.stringify({ type: 'menu_context', items: menuCards })}\n\n`);
+  }
+
+  // 10. Stream from Gemini
   let fullResponse = '';
 
   await streamChat(

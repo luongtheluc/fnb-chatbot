@@ -6,7 +6,7 @@
 const { pool } = require('./db');
 
 // Max menu items to inject into context (avoid token bloat)
-const MAX_MENU_ITEMS = 20;
+const MAX_MENU_ITEMS = 10;
 
 /**
  * Extract keywords from user message for SQL search
@@ -44,7 +44,7 @@ async function getMenuContext(userMessage) {
     const BASE_SELECT = `
       SELECT sp.MaSP AS id, sp.TenSP AS name,
              sp.GiaCoBan AS price, sp.GiaNiemYet AS listed_price,
-             c.TenCategory AS category
+             sp.HinhAnh AS image, c.TenCategory AS category
       FROM SanPham sp
       LEFT JOIN Category c ON sp.MaCategory = c.MaCategory
       WHERE sp.TrangThai = 1`;

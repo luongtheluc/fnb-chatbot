@@ -38,8 +38,24 @@ function parseRetryDelay(errText) {
 }
 
 /**
+ * Build a user message part that optionally includes an image
+ * @param {string} text - User text message
+ * @param {string|null} imageBase64 - Base64 encoded image (without data: prefix)
+ * @param {string} mimeType - e.g. 'image/jpeg'
+ * @returns {Object} Gemini content object
+ */
+function buildUserMessage(text, imageBase64 = null, mimeType = 'image/jpeg') {
+  const parts = [];
+  if (imageBase64) {
+    parts.push({ inline_data: { mime_type: mimeType, data: imageBase64 } });
+  }
+  if (text) parts.push({ text });
+  return { role: 'user', parts };
+}
+
+/**
  * Stream chat response from Gemini API with model fallback + retry on 429
- * @param {Array} messages - [{role: 'user'|'model', parts: [{text: '...'}]}]
+ * @param {Array} messages - Gemini contents array (use buildUserMessage for new messages)
  * @param {string} systemPrompt - System instruction
  * @param {Function} onChunk - Callback for each text chunk: (text) => void
  * @param {Function} onDone - Callback when stream ends
@@ -56,7 +72,7 @@ async function streamChat(messages, systemPrompt, onChunk, onDone, onError) {
       temperature: 1.0,
       topP: 1.0,
       topK: 20,
-      maxOutputTokens: 1024,
+      maxOutputTokens: 2048,
     },
     safetySettings: [
       { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
@@ -153,4 +169,4 @@ async function streamChat(messages, systemPrompt, onChunk, onDone, onError) {
   return onError(new Error('Gemini service unavailable. Please try again later.'));
 }
 
-module.exports = { streamChat };
+module.exports = { streamChat, buildUserMessage };
