@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FnB Chatbot Widget</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f0f2f5;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #333;
+    }
+
+    .page-demo {
+      text-align: center;
+      opacity: 0.4;
+      font-size: 14px;
+    }
+
+    /* ── Floating button ── */
+    #chat-toggle {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: #e85d04;
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      font-size: 24px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+      transition: transform 0.2s, background 0.2s;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #chat-toggle:hover { background: #c44d02; transform: scale(1.08); }
+
+    /* Unread badge */
+    #chat-badge {
+      display: none;
+      position: absolute;
+      top: -2px;
+      right: -2px;
+      width: 16px;
+      height: 16px;
+      background: #e63946;
+      border-radius: 50%;
+      font-size: 10px;
+      font-weight: bold;
+      line-height: 16px;
+      text-align: center;
+    }
+
+    /* ── Chat window ── */
+    #chat-window {
+      display: none;
+      position: fixed;
+      bottom: 92px;
+      right: 24px;
+      width: 360px;
+      max-height: 520px;
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+      z-index: 999;
+      flex-direction: column;
+      overflow: hidden;
+      animation: slideUp 0.25s ease;
+    }
+    #chat-window.open { display: flex; }
+
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Header */
+    .chat-header {
+      background: #e85d04;
+      color: #fff;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .chat-header .avatar {
+      width: 34px; height: 34px;
+      background: rgba(255,255,255,0.25);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .chat-header .info strong { display: block; font-size: 14px; }
+    .chat-header .info span { font-size: 11px; opacity: 0.85; }
+    .chat-header .close-btn {
+      margin-left: auto;
+      background: none; border: none;
+      color: #fff; font-size: 20px; cursor: pointer; opacity: 0.8;
+      line-height: 1;
+    }
+    .chat-header .close-btn:hover { opacity: 1; }
+
+    /* Messages area */
+    #chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      scroll-behavior: smooth;
+    }
+
+    /* Bubble */
+    .bubble {
+      max-width: 82%;
+      padding: 9px 13px;
+      border-radius: 16px;
+      font-size: 13.5px;
+      line-height: 1.5;
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+    .bubble.bot {
+      background: #f1f0f0;
+      color: #222;
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+    }
+    .bubble.user {
+      background: #e85d04;
+      color: #fff;
+      align-self: flex-end;
+      border-bottom-right-radius: 4px;
+    }
+
+    /* Typing indicator */
+    .typing-dots {
+      display: flex; gap: 4px; align-items: center;
+      padding: 10px 14px;
+      background: #f1f0f0;
+      border-radius: 16px;
+      border-bottom-left-radius: 4px;
+      align-self: flex-start;
+    }
+    .typing-dots span {
+      width: 7px; height: 7px;
+      background: #999; border-radius: 50%;
+      animation: bounce 1.2s infinite;
+    }
+    .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce {
+      0%, 60%, 100% { transform: translateY(0); }
+      30% { transform: translateY(-5px); }
+    }
+
+    /* Input area */
+    .chat-footer {
+      padding: 10px 12px;
+      border-top: 1px solid #eee;
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    #chat-input {
+      flex: 1;
+      border: 1.5px solid #ddd;
+      border-radius: 20px;
+      padding: 8px 14px;
+      font-size: 13.5px;
+      outline: none;
+      resize: none;
+      line-height: 1.4;
+      max-height: 90px;
+      overflow-y: auto;
+    }
+    #chat-input:focus { border-color: #e85d04; }
+    #send-btn {
+      width: 38px; height: 38px;
+      background: #e85d04;
+      color: #fff; border: none;
+      border-radius: 50%; cursor: pointer;
+      font-size: 16px; flex-shrink: 0;
+      align-self: flex-end;
+      transition: background 0.2s;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #send-btn:hover { background: #c44d02; }
+    #send-btn:disabled { background: #ccc; cursor: default; }
+
+    @media (max-width: 420px) {
+      #chat-window { width: calc(100vw - 16px); right: 8px; bottom: 80px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page-demo">
+    <p>🌐 Trang web của bạn hiển thị ở đây</p>
+    <p style="margin-top:8px">Nhấn vào nút 🤖 góc phải dưới để mở chatbot</p>
+  </div>
+
+  <!-- Floating toggle button -->
+  <button id="chat-toggle" title="Trợ lý AI nhà hàng">
+    🤖
+    <span id="chat-badge">1</span>
+  </button>
+
+  <!-- Chat window -->
+  <div id="chat-window">
+    <div class="chat-header">
+      <div class="avatar">🤖</div>
+      <div class="info">
+        <strong>Trợ lý nhà hàng</strong>
+        <span>Trả lời ngay lập tức</span>
+      </div>
+      <button class="close-btn" id="close-btn" title="Đóng">✕</button>
+    </div>
+
+    <div id="chat-messages"></div>
+
+    <div class="chat-footer">
+      <textarea
+        id="chat-input"
+        placeholder="Nhắn tin..."
+        rows="1"
+        maxlength="500"
+      ></textarea>
+      <button id="send-btn" title="Gửi">➤</button>
+    </div>
+  </div>
+
+  <script>
+    // ── Config ──────────────────────────────────────────────────────────────
+    const SERVER_URL = 'http://localhost:3001';
+
+    // ── State ───────────────────────────────────────────────────────────────
+    let sessionId = null;
+    let isStreaming = false;
+
+    const toggleBtn  = document.getElementById('chat-toggle');
+    const closeBtn   = document.getElementById('close-btn');
+    const chatWindow = document.getElementById('chat-window');
+    const messages   = document.getElementById('chat-messages');
+    const input      = document.getElementById('chat-input');
+    const sendBtn    = document.getElementById('send-btn');
+    const badge      = document.getElementById('chat-badge');
+
+    // ── Session ─────────────────────────────────────────────────────────────
+    async function initSession() {
+      try {
+        const res = await fetch(`${SERVER_URL}/chat/session`, { method: 'POST' });
+        const data = await res.json();
+        sessionId = data.session_id;
+      } catch {
+        sessionId = 'local-' + Math.random().toString(36).slice(2);
+      }
+    }
+
+    // ── UI helpers ───────────────────────────────────────────────────────────
+    function addBubble(role, text = '') {
+      const div = document.createElement('div');
+      div.className = `bubble ${role}`;
+      div.textContent = text;
+      messages.appendChild(div);
+      scrollToBottom();
+      return div;
+    }
+
+    function showTyping() {
+      const el = document.createElement('div');
+      el.className = 'typing-dots';
+      el.id = 'typing';
+      el.innerHTML = '<span></span><span></span><span></span>';
+      messages.appendChild(el);
+      scrollToBottom();
+    }
+
+    function removeTyping() {
+      document.getElementById('typing')?.remove();
+    }
+
+    function scrollToBottom() {
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    function setStreaming(val) {
+      isStreaming = val;
+      sendBtn.disabled = val;
+      input.disabled = val;
+    }
+
+    // ── Send message ─────────────────────────────────────────────────────────
+    async function sendMessage() {
+      const text = input.value.trim();
+      if (!text || isStreaming || !sessionId) return;
+
+      input.value = '';
+      input.style.height = 'auto';
+
+      addBubble('user', text);
+      showTyping();
+      setStreaming(true);
+
+      try {
+        const res = await fetch(`${SERVER_URL}/chat/stream`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text, session_id: sessionId }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          removeTyping();
+          addBubble('bot', err.error || 'Có lỗi xảy ra, vui lòng thử lại.');
+          setStreaming(false);
+          return;
+        }
+
+        removeTyping();
+        const botBubble = addBubble('bot', '');
+
+        // Parse SSE stream
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const data = line.slice(6).trim();
+            if (data === '[DONE]') break;
+
+            try {
+              const json = JSON.parse(data);
+              if (json.error) {
+                botBubble.textContent = json.error;
+              } else if (json.text) {
+                botBubble.textContent += json.text;
+                scrollToBottom();
+              }
+            } catch { /* skip */ }
+          }
+        }
+      } catch (err) {
+        removeTyping();
+        addBubble('bot', 'Không kết nối được server. Vui lòng thử lại.');
+      }
+
+      setStreaming(false);
+      input.focus();
+    }
+
+    // ── Open/close widget ────────────────────────────────────────────────────
+    async function openChat() {
+      chatWindow.classList.add('open');
+      badge.style.display = 'none';
+
+      if (!sessionId) {
+        // Disable input while session is being created
+        input.disabled = true;
+        sendBtn.disabled = true;
+        input.placeholder = 'Đang kết nối...';
+
+        await initSession();
+
+        input.disabled = false;
+        sendBtn.disabled = false;
+        input.placeholder = 'Nhắn tin...';
+        addBubble('bot', 'Xin chào! 👋 Tôi là trợ lý AI của nhà hàng. Tôi có thể giúp bạn xem thực đơn, đặt bàn, hoặc tư vấn món ăn. Bạn cần gì ạ?');
+      }
+
+      input.focus();
+    }
+
+    function closeChat() {
+      chatWindow.classList.remove('open');
+    }
+
+    toggleBtn.addEventListener('click', () => {
+      chatWindow.classList.contains('open') ? closeChat() : openChat();
+    });
+    closeBtn.addEventListener('click', closeChat);
+
+    // ── Input events ─────────────────────────────────────────────────────────
+    sendBtn.addEventListener('click', sendMessage);
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    // Auto-resize textarea
+    input.addEventListener('input', () => {
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 90) + 'px';
+    });
+
+    // Show badge on page load (invite user to open)
+    setTimeout(() => { badge.style.display = 'block'; }, 2000);
+  </script>
+</body>
+</html>
